@@ -1,0 +1,514 @@
+package com.example.tutorial;
+
+import java.util.ArrayList;
+
+import org.json.JSONException;
+import org.json.JSONObject;
+
+import android.os.AsyncTask;
+import android.os.Bundle;
+import android.app.Activity;
+import android.view.Menu;
+import android.widget.ArrayAdapter;
+import android.widget.ListView;
+import android.widget.Toast;
+
+public class MainActivity extends Activity {
+	ListView lv;
+	@Override
+	protected void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+		setContentView(R.layout.activity_main);
+		ArrayList<VOclass> vodata;
+		lv = (ListView) findViewById(R.id.listView1);
+		Toast.makeText(MainActivity.this, "Main", Toast.LENGTH_LONG).show();
+		new MyAsynkService().execute();
+	}
+
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		// Inflate the menu; this adds items to the action bar if it is present.
+		getMenuInflater().inflate(R.menu.main, menu);
+		return true;
+	}
+	
+	private class MyAsynkService extends AsyncTask{
+		ArrayList<VOclass> voarray;
+		@Override
+		protected void onPreExecute() {
+			// TODO Auto-generated method stub
+			super.onPreExecute();
+			Toast.makeText(MainActivity.this, "Pre", Toast.LENGTH_LONG).show();
+		}
+		
+		@Override
+		protected Object doInBackground(Object... arg0) {
+			// TODO Auto-generated method stub
+			String webresult= "";
+			try{
+				webresult = new WebCall().webhit("Sushant@yahoo.com", "12345");
+			}catch(Exception ex){
+				
+			}
+			try {
+				if(!webresult.equals(""))
+				voarray = new VOclass().parseJson(new JSONObject(webresult));
+			} catch (JSONException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			
+			return null;
+		}
+		
+		@Override
+		protected void onPostExecute(Object result) {
+			// TODO Auto-generated method stub
+			super.onPostExecute(result);
+			/*ArrayAdapter<VOclass> adapter = new ArrayAdapter<VOclass>(getApplicationContext(), textViewResourceId, vodata);
+			lv.setAdapter(adapter);*/
+			
+			MyDB db=new MyDB(MainActivity.this);
+			db.open();
+			//db.dropTable1();
+			db.onCreate();
+			db.close();
+			Toast.makeText(MainActivity.this, "Post", Toast.LENGTH_LONG).show();
+		}
+		
+	}
+
+}
+
+
+//----------------------------------------------------
+package com.example.tutorial;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.entity.UrlEncodedFormEntity;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.message.BasicNameValuePair;
+
+import android.util.Log;
+
+public class WebCall {
+	
+	public String webhit(String email,String pass){
+		
+		//StrictMode.ThreadPolicy policy = new StrictMode.ThreadPolicy.Builder().permitAll().build();
+	   // StrictMode.setThreadPolicy(policy);
+		  String result = null;
+		  InputStream is = null;
+		  StringBuilder sb=null;
+		  String urlStr = null;
+		  try{
+		 			  
+			 HttpClient httpclient = new DefaultHttpClient();
+			 HttpPost httppost = new HttpPost("http://www.thebhk.com/bhkios/logindetails.php");
+		     
+			 ArrayList<BasicNameValuePair> params = new ArrayList();
+		       
+		     params.add(new BasicNameValuePair("email",email));
+		     params.add(new BasicNameValuePair("password",pass));
+		      
+		     // UrlEncodedFormEntity ent = new UrlEncodedFormEntity(params1,HTTP.UTF_8);
+
+		     httppost.setEntity(new UrlEncodedFormEntity(params));
+		    		    
+		     HttpResponse response = httpclient.execute(httppost);
+		     HttpEntity entity = response.getEntity();
+		     is = entity.getContent();
+		       //in.close();
+		  }catch(Exception e){
+		     Log.e("log_tag1", "Error in http connection"+e.toString());
+		  }
+		     
+		  //convert response to string
+		  try{
+			  BufferedReader reader = new BufferedReader(new InputStreamReader(is));
+			  sb = new StringBuilder();
+			  sb.append(reader.readLine() + "\n");
+			  String line="0";
+			  while ((line = reader.readLine()) != null) {
+				  sb.append(line + "\n");
+				  Log.e("log_tag",line.toString());
+			  }
+			  is.close();
+			  result=sb.toString();
+			  Log.d("Replayyyyyyyyyyy", result);
+		  }catch(Exception e){
+			  Log.e("log_tag", "Error converting result "+e.toString());
+		  }
+		  return result;
+	  }
+
+}
+//---------------------------------------------------------------------
+
+package com.example.tutorial;
+
+import java.util.ArrayList;
+
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+public class VOclass {
+	int ids;
+	String name;
+	String Description;
+	ArrayList<String> values;
+
+	public ArrayList<VOclass> parseJson(JSONObject jsobj){
+		ArrayList<VOclass> voclass = new ArrayList<VOclass>(); 
+		VOclass tempVO = new VOclass();
+		
+		try {
+			tempVO.ids = jsobj.getInt("UID");
+			tempVO.name=jsobj.get("Name").toString();
+			tempVO.Description = jsobj.getString("Description").toString();
+			JSONArray jarray = jsobj.getJSONArray("values");
+			values = new ArrayList<String>();
+			
+			for(int cnt =0;cnt<jarray.length();cnt++){
+				JSONObject jvalue = (JSONObject) jarray.get(cnt);
+				tempVO.values.add(jvalue.get("Values").toString());
+			}
+			voclass.add(tempVO);
+			
+		} catch (JSONException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+		return null;
+	}
+}
+//----------------------------------------------------
+
+package com.example.tutorial;
+
+import android.app.Activity;
+import android.content.ContentValues;
+import android.content.Context;
+import android.database.Cursor;
+import android.database.sqlite.SQLiteDatabase;
+import android.database.sqlite.SQLiteOpenHelper;
+import android.util.Log;
+
+public class MyDB extends Activity 
+{
+
+	
+	 public static final String KEY_ROWID     = "_id";
+	 public static final String KEY_FNAME     = "fname";
+	 public static final String KEY_LNAME     = "lname";  
+	 public static final String KEY_COMP      = "company"; 
+	 public static final String KEY_USERTYPE  = "usertype";
+	 public static final String KEY_MOBILE    = "mobile";  
+	 public static final String KEY_ADDRESS   = "address"; 
+	 public static final String KEY_USERID    = "userid"; 
+	 public static final String KEY_COMURL    = "curl"; 
+	 public static final String KEY_DATE      = "date"; 
+	 public static final String KEY_EMAIL      = "email"; 
+	 
+	 public static final String KEY_PROPERTYID  = "pid"; 
+	 public static final String KEY_TOTALPRICE   = "totalprice"; 
+	 public static final String KEY_BEDROOM      = "bedroom"; 
+	 public static final String KEY_PROPERTYTYPE  = "propertytype"; 
+	 public static final String KEY_CITYP      = "cityp"; 
+	 public static final String KEY_ADDERESS      = "address"; 
+	 
+	 public static final String KEY_FURNISHED      = "furnished";
+	 public static final String KEY_STATUS         = "status";
+	 public static final String KEY_PROPERTYFOR    = "propertyfor";
+	 public static final String KEY_BUILTUPAREA    = "builtarea";
+	 public static final String KEY_FIRSTNAME    = "firstname";
+	 public static final String KEY_USERTYPE1    = "utype";
+	
+	
+	 
+	 private static final String DATABASE_NAME = "SEARCH";
+	 private static final String DATABASE_TABLE = "agentsearch";
+	 private static final String DATABASE_TABLECITY = "propertycity";
+	 private static final String DATABASE_TABLEPROPERTYSERACHDETAIL = "agentProertydetails";
+	 private static final int DATABASE_VERSION = 1;
+	    
+	 private static final String DATABASE_CREATE ="create table if not exists agentsearch(_id integer primary key autoincrement, "+ "fname text,"+"lname text,"+"company text,"+"usertype text,"+"mobile text,"+"address text,"+"userid text,"+"curl text,"+"date text,"+"email text);"; 
+	 private static final String DATABASE_CREATEagetpropertydetail ="create table if not exists agentProertydetails(_id integer primary key autoincrement, "+ "pid integer,"+"totalprice text,"+"bedroom text,"+"propertytype text,"+"cityp text,"+"address text,"+"furnished text,"+"status text,"+"propertyfor text,"+"builtarea text,"+"firstname text,"+"utype text);"; 
+	 
+    private final Context context; 
+    
+	    private static DatabaseHelper DBHelper;
+	    private static SQLiteDatabase db;
+
+	    public MyDB(Context ctx) 
+	    {
+	        this.context = ctx;
+	        DBHelper = new DatabaseHelper(context);
+	    }
+	        
+	    private static class DatabaseHelper extends SQLiteOpenHelper 
+	    {
+	        private static final String TAG = null;
+
+			DatabaseHelper(Context context) {
+	            super(context, DATABASE_NAME, null, DATABASE_VERSION);
+	        }
+	             @Override
+	        public void onCreate(SQLiteDatabase db){
+	            db.execSQL(DATABASE_CREATE);
+	            db.execSQL(DATABASE_CREATEagetpropertydetail);
+	            //db.execSQL(DATABASE_CREATECITY);
+	            Log.d("kkkkkkkkkkk dabase crated", "ssssssss");
+	        }
+	    
+	        
+	             public void dropTable1(SQLiteDatabase db) 
+	             {
+	                 db.execSQL("DROP TABLE IF EXISTS propertystate");
+	                 //Log.d("kkkkkkkkkkk dabase crated", "ssssssss");
+	             }     
+	             
+	             
+	        
+	        @Override
+	        public void onUpgrade(SQLiteDatabase db, int oldVersion, 
+	                              int newVersion) 
+	        {
+	            Log.w(TAG, "Upgrading database from version " + oldVersion 
+	                  + " to "
+	                  + newVersion + ", which will destroy all old data");
+	            db.execSQL("DROP TABLE IF EXISTS titles");
+	            onCreate(db);
+	        }
+	    }
+	    
+	    public void open() {
+			// TODO Auto-generated method stub
+			 db = DBHelper.getWritableDatabase();  
+		}
+
+		public void close() {
+			// TODO Auto-generated method stub
+			DBHelper.close();  
+			
+		}
+
+		public void onCreate() {
+			// TODO Auto-generated method stub
+			// db.execSQL("DROP TABLE IF EXISTS "+DATABASE_TABLE + ";");
+			 db.execSQL(DATABASE_CREATE);
+			 db.execSQL(DATABASE_CREATEagetpropertydetail);
+			// db.execSQL(DATABASE_CREATECITY);
+			 Log.d("Database Created", "Yahooooooooooo");
+		}
+
+		public void onUpgrad() {
+			// TODO Auto-generated method stub
+			db.execSQL("DROP TABLE IF EXISTS create_task");
+		}
+
+		public void dropTable1() {
+			// TODO Auto-generated method stub
+			db.execSQL("DROP TABLE IF EXISTS propertystate");
+		}
+		
+		public void Testdata(){
+		    	String str="";
+		   		Cursor c=db.rawQuery("select _id,agentid,compid,agentname,desgi,managerid,agentcmpid,branchnm,createdby,status,email,address,phone1,phone2 from agentdetailsdb",null);
+		   		int cnt=0;
+		   		while(cnt <=c.getCount())
+		   		{	
+		   			c.moveToLast();
+		   			
+		   			Log.d("Test",c.getString(c.getColumnIndex("_id")));
+		   			Log.d("Test",c.getString(c.getColumnIndex("agentid")));
+		   			//Log.d("Test",c.getString(c.getColumnIndex("tasktype")));
+		   			//Log.d("Testpass",c.getString(c.getColumnIndex("taskid")));
+		   			Log.d("Testservernm",c.getString(c.getColumnIndex("compid")));
+		   			Log.d("TestDe",c.getString(c.getColumnIndex("agentname")));
+		   			Log.d("Teststatus",c.getString(c.getColumnIndex("desgi")));
+		   			Log.d("Teststatus",c.getString(c.getColumnIndex("managerid")));
+		   			Log.d("Teststatus",c.getString(c.getColumnIndex("agentcmpid")));
+		   			Log.d("Teststatus",c.getString(c.getColumnIndex("branchnm")));
+		   			Log.d("Teststatus",c.getString(c.getColumnIndex("createdby")));
+		   			Log.d("Teststatus",c.getString(c.getColumnIndex("status")));
+		   			Log.d("Teststatus",c.getString(c.getColumnIndex("address")));
+		   			Log.d("Teststatus",c.getString(c.getColumnIndex("phone1")));
+		   			Log.d("Teststatus",c.getString(c.getColumnIndex("phone2")));
+		   		
+		   			
+		   			cnt++;
+		   			
+		 		}
+		   		
+		}
+		
+		public long insert(String fname,String lname,String compney,String usertype,String mobile,String address,String userid,String url,String date,String mail) {
+			// TODO Auto-generated method stub
+			
+		      ContentValues initialValues = new ContentValues();  
+	          initialValues.put(KEY_FNAME ,fname);  
+	          initialValues.put(KEY_LNAME,lname);
+	          initialValues.put(KEY_COMP,compney);
+	          initialValues.put(KEY_USERTYPE ,usertype);  
+	          initialValues.put(KEY_MOBILE,mobile);
+	          initialValues.put(KEY_ADDRESS,address);  
+	          initialValues.put(KEY_USERID,userid);
+	          initialValues.put(KEY_COMURL,url);
+	          initialValues.put(KEY_DATE,date);
+	          initialValues.put(KEY_EMAIL,mail);
+	          return db.insert(DATABASE_TABLE, null, initialValues);
+	          
+	    }
+		
+		public void delete(){
+			db.execSQL("delete from agentsearch");
+			Log.d("All Record deleted", "ssssssss");
+		}
+		
+		public Cursor serch(){
+			  String[] columns = new String[]{KEY_ROWID,KEY_FNAME,KEY_COMP,KEY_USERTYPE,KEY_MOBILE,KEY_ADDRESS,KEY_DATE,KEY_USERTYPE,KEY_EMAIL,KEY_COMURL,KEY_USERID};
+			  //String[] columns = new String[]{"dyad","sgfahd","safdfs","fsadfdsa"};
+			  Cursor cursor = db.query(DATABASE_TABLE, columns,null, null, null, null, null);
+			//  Cursor cursor = db.query(DATABASE_TABLE, columns,null, null, null, null, null);
+			  return cursor;
+		 }
+		
+		public Cursor search(String uid){
+			  String[] columns = new String[]{KEY_ROWID,KEY_FNAME,KEY_COMP,KEY_USERTYPE,KEY_MOBILE,KEY_ADDRESS,KEY_DATE,KEY_USERTYPE,KEY_EMAIL,KEY_COMURL,KEY_USERID};
+			  //String[] columns = new String[]{"dyad","sgfahd","safdfs","fsadfdsa"};
+			  Cursor cursor = db.query(DATABASE_TABLE, columns,"userid='"+uid+"'",null, null, null, null);
+			//  Cursor cursor = db.query(DATABASE_TABLE, columns,null, null, null, null, null);
+			
+			  
+			  return cursor;
+		 }
+		
+		public Cursor getcity(String stateid){
+			  String[] columns = new String[]{KEY_ROWID};
+			  //String[] columns = new String[]{"dyad","sgfahd","safdfs","fsadfdsa"};
+			  Cursor cursor = db.query(DATABASE_TABLECITY, columns,"stateid='"+stateid+"'",null, null, null, null, null);
+			//  Cursor cursor = db.query(DATABASE_TABLE, columns,null, null, null, null, null);
+			
+			  
+			  return cursor;
+		 }
+}
+
+
+//-------------------------------------------------------------
+
+package com.example.tutorial;
+
+import android.app.Activity;
+import android.content.Context;
+import android.content.Intent;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
+import android.os.Bundle;
+import android.util.Log;
+import android.view.MotionEvent;
+import android.view.Window;
+import android.widget.Toast;
+
+public class Splash extends Activity{
+    protected boolean _active = true;
+    protected int _splashTime = 5000;
+    
+    /** Called when the activity is first created. */
+    
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
+        setContentView(R.layout.splash);
+        Log.d("hey...","in the main");
+        
+    	boolean ss=isNetworkAvailable();
+		Log.d("Valueeeeeeeeeeeeee", String.valueOf(ss));
+
+		// thread for displaying the SplashScreen
+        Thread splashTread = new Thread(){
+          
+            public void run() {
+                try {
+                    int waited = 0;
+                    while(_active && (waited < _splashTime)) {
+                        sleep(50);
+                        if(_active) {
+                            waited += 100;
+                        }
+                    }
+                	finish();
+                    startActivity(new Intent(Splash.this,MainActivity.class));
+                   // stop();
+                } catch(InterruptedException e) {
+                    // do nothing
+                	 Toast.makeText(Splash.this,"Week Internet Signal",Toast.LENGTH_LONG).show();
+                	 finish();
+                } 
+            }
+        };
+        splashTread.start();
+    }
+    
+    public boolean onTouchEvent(MotionEvent event) {
+        if (event.getAction() == MotionEvent.ACTION_DOWN) {
+            _active = false;
+        }
+        return true;
+    }
+    	         
+	 public boolean isNetworkAvailable(){
+	    ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+	    NetworkInfo activeNetworkInfo = connectivityManager.getActiveNetworkInfo();
+	    if(activeNetworkInfo != null && activeNetworkInfo.isConnected()){
+	    	return true;
+	    }else{
+	    	return false;
+	    } 	
+	}
+    
+}
+
+//--------------------------------------
+
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.tutorial"
+    android:versionCode="1"
+    android:versionName="1.0" >
+
+    <uses-sdk
+        android:minSdkVersion="8"
+        android:targetSdkVersion="17" />
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:theme="@style/AppTheme" >
+        <activity
+            android:name="com.example.tutorial.Splash"
+            android:label="@string/app_name" >
+            <intent-filter>1
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+         <activity android:name="com.example.tutorial.MainActivity" ></activity>
+    </application>
+
+</manifest>
